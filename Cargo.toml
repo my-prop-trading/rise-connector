@@ -1,0 +1,28 @@
+[package]
+name = "rise-connector"
+version = "0.0.1"
+edition = "2024"
+authors = ["gorin <mxmgorin@gmail.com>"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+flurl = { git = "https://github.com/MyJetTools/fl-url.git", rev = "d835b8c287302952550b604aeb1f122ac6e3a63b" }
+
+http = "*"
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
+tokio = { version = "*", features = ["full"] }
+async-trait = "*"
+error-chain = { version = "0.12.4", default-features = false }
+serde_qs = "*"
+strum = { version = "0.26", features = ["derive"] }
+# encryption-----------
+base64 = "*"
+libaes = "*"
+prost = "*"
+sha2 = "*"
+ring = "0.17.9"
+# ---------------------
+
+[dev-dependencies]
+uuid = { version = "*", features = ["v4"] }
