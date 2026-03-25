@@ -9,6 +9,8 @@ authors = ["gorin <mxmgorin@gmail.com>"]
 flurl = { git = "https://github.com/MyJetTools/fl-url.git", rev = "d835b8c287302952550b604aeb1f122ac6e3a63b" }
 
 http = "*"
+alloy = { version = "0.1", features = ["signers", "signer-local", "network"] }
+thiserror = "1.0"
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
 tokio = { version = "*", features = ["full"] }
