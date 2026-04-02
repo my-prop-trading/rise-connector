@@ -214,8 +214,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
 
         let flurl = flurl
             .with_header("Content-Type", json_content_str)
-            .with_header("Accept", json_content_str)
-            .with_header("brand-api-key", self.config.get_api_key().await);
+            .with_header("Accept", json_content_str);
         flurl
     }
 
