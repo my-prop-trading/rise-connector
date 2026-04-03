@@ -42,7 +42,12 @@ impl<C: RestApiConfig> RestApiClient<C> {
         };
 
         let message_data: ApiResponse<SiweMessageResponse> = self
-            .send_deserialized(RestApiEndpoint::GetMessageToSign, Some(&message_req))
+            .send_deserialized(
+                RestApiEndpoint::GetMessageToSign,
+                Some(&message_req),
+                Some(self.build_query_string(
+                    vec![("wallet", wallet_address.as_str())]
+                )))
             .await?;
     
         if message_data.data.wallet.to_lowercase() != wallet_address.to_lowercase() {
@@ -60,7 +65,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         };
 
         let login_data: ApiResponse<SiweLoginResponse> = self
-            .send_deserialized(RestApiEndpoint::AuthLogin, Some(&login_req))
+            .send_deserialized(RestApiEndpoint::AuthLogin, Some(&login_req), None)
             .await?;
     
         Ok(login_data.data)
@@ -72,7 +77,8 @@ impl<C: RestApiConfig> RestApiClient<C> {
     ) -> Result<ApiResponse<CreateInviteResponse>, Error> {
         self.send_deserialized(
             RestApiEndpoint::Invite, 
-            Some(&invite)
+            Some(&invite),
+            None
         ).await
     }
 
@@ -80,6 +86,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         &self,
         endpoint: RestApiEndpoint,
         request: Option<&R>,
+        query_string: Option<String>,
     ) -> Result<T, Error> {
         if std::env::var("DEBUG").is_ok() {
             println!("execute send_deserialized: {:?} {:?}", endpoint, request);
@@ -88,7 +95,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         let timeout = self.config.get_timeout().await;
         let response = tokio::time::timeout(
             timeout,
-            self.send_flurl_deserialized(&endpoint, request),
+            self.send_flurl_deserialized(&endpoint, request, query_string),
         )
         .await;
 
@@ -123,8 +130,9 @@ impl<C: RestApiConfig> RestApiClient<C> {
         &self,
         endpoint: &RestApiEndpoint,
         request: Option<&R>,
+        query_string: Option<String>,
     ) -> Result<T, Error> {
-        let response = self.send_flurl(endpoint, request).await?;
+        let response = self.send_flurl(endpoint, request, query_string).await?;
         let result: Result<T, _> = serde_json::from_str(&response);
 
         let Ok(body) = result else {
@@ -146,6 +154,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         &self,
         endpoint: &RestApiEndpoint,
         request: Option<&R>,
+        query_string: Option<String>,
     ) -> Result<String, Error> {
         let mut request_json = None;
 
@@ -159,7 +168,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         } else {
             None
         };
-        let (flurl, url) = self.build_flurl(endpoint, request).await?;
+        let (flurl, url) = self.build_flurl::<()>(endpoint, query_string).await?;
         let http_method = endpoint.get_http_method();
 
         let result = if http_method == Method::GET {
@@ -192,19 +201,13 @@ impl<C: RestApiConfig> RestApiClient<C> {
     pub async fn build_flurl<R: Serialize>(
         &self,
         endpoint: &RestApiEndpoint,
-        request: Option<&R>,
+        query_string: Option<String>,
     ) -> Result<(FlUrl, String), Error> {
         let base_url = self.config.get_api_url().await;
-        let http_method = endpoint.get_http_method();
 
-        let url = if http_method == Method::GET {
-            let query_string = serde_qs::to_string(&request).expect("must be valid model");
-            self.build_full_url(&base_url, endpoint, Some(query_string))
-        } else {
-            self.build_full_url(&base_url, endpoint, None)
-        };
-
-        let flurl = self.add_headers(FlUrl::new(&url).set_timeout(self.config.get_timeout().await)).await;
+        let url = self.build_full_url(&base_url, endpoint, query_string);
+        let flurl = FlUrl::new(&url).set_timeout(self.config.get_timeout().await);
+        let flurl = self.add_headers(flurl).await;
 
         Ok((flurl, url))
     }

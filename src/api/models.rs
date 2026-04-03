@@ -42,13 +42,20 @@ pub struct SiweLoginResponse {
     pub token: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct CreateInviteRequest {
-    pub email: String,
-    pub first_name: String,
-    pub last_name: String,
-    pub company_riseid: Option<String>,
-    pub light: bool, // If true, requires less KYC data (email, names only)
+    #[serde(rename = "inviteList")]
+    pub invite_list: Vec<String>, // emails or rise IDs
+    pub anonymous: bool,
+    pub company_riseid: String,
+    // pub company_id: Option<i64>, // required if company_riseid is not provided
+    #[serde(default = "default_role")]
+    pub role: String, 
+}
+
+fn default_role() -> String {
+    "contractor".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -56,5 +63,4 @@ pub struct CreateInviteResponse {
     pub id: String,
     pub status: String,
     pub email: String,
-    // Add other fields as needed from the API response
 }
