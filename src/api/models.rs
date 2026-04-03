@@ -17,12 +17,6 @@ pub struct ApiResponse<T> {
     pub data: T,
 }
 
-// Step 1: Requesting the SIWE message
-#[derive(Debug, Clone, Serialize)]
-pub struct SiweMessageRequest {
-    pub wallet: String,
-}
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct SiweMessageResponse {
     pub message: String,

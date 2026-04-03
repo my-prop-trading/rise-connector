@@ -5,48 +5,73 @@ use flurl::{FlUrl, FlUrlResponse};
 use http::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Serialize};
+use tokio::sync::RwLock;
 use std::fmt::Debug;
 use std::time::Duration;
 
 use crate::api::endpoints::RestApiEndpoint;
 use crate::api::errors::Error;
-use crate::api::models::{ApiResponse, CreateInviteRequest, CreateInviteResponse, SiweLoginRequest, SiweLoginResponse, SiweMessageRequest, SiweMessageResponse};
+use crate::api::models::{ApiResponse, CreateInviteRequest, CreateInviteResponse, SiweLoginRequest, SiweLoginResponse, SiweMessageResponse};
 
 #[async_trait::async_trait]
 pub trait RestApiConfig {
     async fn get_api_url(&self) -> String;
     async fn get_timeout(&self) -> Duration;
     async fn get_wallet_private_key(&self) -> String;
+    async fn get_company_rise_id(&self) -> String;
+    async fn get_company_email(&self) -> String;
 }
 
 pub struct RestApiClient<C: RestApiConfig> {
     config: C,
+    token_cache: RwLock<Option<String>>,
 }
 
 impl<C: RestApiConfig> RestApiClient<C> {
     pub fn new(config: C) -> Self {
         Self {
             config,
+            token_cache: RwLock::new(None),
         }
     }
 
-    pub async fn get_auth_token(&self) -> Result<SiweLoginResponse, Error> {
+    pub async fn create_invitation(
+        &self, 
+        invite_list: Vec<String>,
+    ) -> Result<ApiResponse<CreateInviteResponse>, Error> {
+        let token = self.get_token().await;
+        let Ok(token) = token else {
+            return Err(format!("Failed to get token: {:?}", token.unwrap_err()).into());
+        };
+
+        let invite_request = CreateInviteRequest {
+            invite_list,
+            anonymous: false,
+            company_riseid: self.config.get_company_rise_id().await,
+            role: crate::api::models::Role::Contractor,
+        };
+
+        return self.send_invitation(invite_request, token).await;
+    }
+
+    async fn get_auth_token(&self) -> Result<SiweLoginResponse, Error> {
         let raw_key = self.config.get_wallet_private_key().await;
 
         let wallet: PrivateKeySigner = raw_key.parse::<PrivateKeySigner>()
             .map_err(|e| Error::RestError(format!("Failed to initialize signer: {}", e)))?;
         let wallet_address = format!("{}", wallet.address());
 
-        let message_req = SiweMessageRequest {
-            wallet: wallet_address.clone(),
-        };
-
+        let body: Option<&()> = None;
         let message_data: ApiResponse<SiweMessageResponse> = self
             .send_deserialized(
                 RestApiEndpoint::GetSiweMessage,
-                Some(&message_req),
+                body,
                 Some(self.build_query_string(
-                    vec![("wallet", wallet_address.as_str())],
+                    vec![
+                        ("wallet", wallet_address.as_str()),
+                        ("impersonate", self.config.get_company_email().await.as_str()),
+                        ("rise_id", self.config.get_company_rise_id().await.as_str())
+                        ],
                 )),
                 vec![],
             ).await?;
@@ -55,7 +80,8 @@ impl<C: RestApiConfig> RestApiClient<C> {
             return Err("Wallet mismatch from API".into());
         }
 
-        let signature = wallet.sign_message(&message_data.data.message.as_bytes())
+        let signature = wallet
+            .sign_message(&message_data.data.message.as_bytes())
             .await
             .map_err(|e| format!("Signing failed: {}", e))?;
 
@@ -72,7 +98,21 @@ impl<C: RestApiConfig> RestApiClient<C> {
         Ok(login_data.data)
     }
 
-    pub async fn create_invitation(
+    async fn get_token(&self) -> Result<String, Error> {
+        let read_guard = self.token_cache.read().await;
+        if let Some(token) = &*read_guard {
+            return Ok(token.clone());
+        }
+
+        let login_response = self.get_auth_token().await?;
+        
+        let mut write_guard = self.token_cache.write().await;
+        *write_guard = Some(login_response.token.clone());
+        
+        Ok(login_response.token)
+    }
+
+    async fn send_invitation(
         &self, 
         invite: CreateInviteRequest,
         token: String
