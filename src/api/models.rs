@@ -49,13 +49,14 @@ pub struct CreateInviteRequest {
     pub invite_list: Vec<String>, // emails or rise IDs
     pub anonymous: bool,
     pub company_riseid: String,
-    // pub company_id: Option<i64>, // required if company_riseid is not provided
-    #[serde(default = "default_role")]
-    pub role: String, 
+    pub role: Role, 
 }
 
-fn default_role() -> String {
-    "contractor".to_string()
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    Contractor,
+    Client,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -2,8 +2,8 @@ use http::Method;
 
 #[derive(Clone, Copy, Debug)]
 pub enum RestApiEndpoint {
-    GetMessageToSign,
-    AuthLogin,
+    GetSiweMessage,
+    ExecuteSiweAuth,
     Invite,
 }
 
@@ -12,7 +12,7 @@ impl From<&RestApiEndpoint> for String {
         let api_version = "v1";
 
         match item {
-            RestApiEndpoint::GetMessageToSign | RestApiEndpoint::AuthLogin => format!("/auth/api/siwe"),
+            RestApiEndpoint::GetSiweMessage | RestApiEndpoint::ExecuteSiweAuth => format!("/auth/api/siwe"),
             RestApiEndpoint::Invite => {
                 format!("/{api_version}/invites")
             }
@@ -23,9 +23,9 @@ impl From<&RestApiEndpoint> for String {
 impl RestApiEndpoint {
     pub fn get_http_method(&self) -> Method {
         match &self {
-            RestApiEndpoint::AuthLogin => Method::POST,
+            RestApiEndpoint::ExecuteSiweAuth => Method::POST,
             RestApiEndpoint::Invite => Method::POST,
-            RestApiEndpoint::GetMessageToSign => Method::GET,
+            RestApiEndpoint::GetSiweMessage => Method::GET,
         }
     }
 }

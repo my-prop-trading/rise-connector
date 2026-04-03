@@ -15,7 +15,6 @@ use crate::api::models::{ApiResponse, CreateInviteRequest, CreateInviteResponse,
 #[async_trait::async_trait]
 pub trait RestApiConfig {
     async fn get_api_url(&self) -> String;
-    async fn get_api_key(&self) -> String;
     async fn get_timeout(&self) -> Duration;
     async fn get_wallet_private_key(&self) -> String;
 }
@@ -33,9 +32,10 @@ impl<C: RestApiConfig> RestApiClient<C> {
 
     pub async fn get_auth_token(&self) -> Result<SiweLoginResponse, Error> {
         let raw_key = self.config.get_wallet_private_key().await;
+
         let wallet: PrivateKeySigner = raw_key.parse::<PrivateKeySigner>()
             .map_err(|e| Error::RestError(format!("Failed to initialize signer: {}", e)))?;
-        let wallet_address = format!("{:?}", wallet.address());
+        let wallet_address = format!("{}", wallet.address());
 
         let message_req = SiweMessageRequest {
             wallet: wallet_address.clone(),
@@ -43,12 +43,13 @@ impl<C: RestApiConfig> RestApiClient<C> {
 
         let message_data: ApiResponse<SiweMessageResponse> = self
             .send_deserialized(
-                RestApiEndpoint::GetMessageToSign,
+                RestApiEndpoint::GetSiweMessage,
                 Some(&message_req),
                 Some(self.build_query_string(
-                    vec![("wallet", wallet_address.as_str())]
-                )))
-            .await?;
+                    vec![("wallet", wallet_address.as_str())],
+                )),
+                vec![],
+            ).await?;
     
         if message_data.data.wallet.to_lowercase() != wallet_address.to_lowercase() {
             return Err("Wallet mismatch from API".into());
@@ -65,7 +66,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         };
 
         let login_data: ApiResponse<SiweLoginResponse> = self
-            .send_deserialized(RestApiEndpoint::AuthLogin, Some(&login_req), None)
+            .send_deserialized(RestApiEndpoint::ExecuteSiweAuth, Some(&login_req), None, vec![])
             .await?;
     
         Ok(login_data.data)
@@ -73,12 +74,14 @@ impl<C: RestApiConfig> RestApiClient<C> {
 
     pub async fn create_invitation(
         &self, 
-        invite: CreateInviteRequest
+        invite: CreateInviteRequest,
+        token: String
     ) -> Result<ApiResponse<CreateInviteResponse>, Error> {
         self.send_deserialized(
             RestApiEndpoint::Invite, 
             Some(&invite),
-            None
+            None,
+            vec![("Authorization", format!("Bearer {token}").as_str())],
         ).await
     }
 
@@ -87,6 +90,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         endpoint: RestApiEndpoint,
         request: Option<&R>,
         query_string: Option<String>,
+        extra_headers: Vec<(&str, &str)>,
     ) -> Result<T, Error> {
         if std::env::var("DEBUG").is_ok() {
             println!("execute send_deserialized: {:?} {:?}", endpoint, request);
@@ -95,7 +99,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         let timeout = self.config.get_timeout().await;
         let response = tokio::time::timeout(
             timeout,
-            self.send_flurl_deserialized(&endpoint, request, query_string),
+            self.send_flurl_deserialized(&endpoint, request, query_string, extra_headers),
         )
         .await;
 
@@ -131,8 +135,9 @@ impl<C: RestApiConfig> RestApiClient<C> {
         endpoint: &RestApiEndpoint,
         request: Option<&R>,
         query_string: Option<String>,
+        extra_headers: Vec<(&str, &str)>,
     ) -> Result<T, Error> {
-        let response = self.send_flurl(endpoint, request, query_string).await?;
+        let response = self.send_flurl(endpoint, request, query_string, extra_headers).await?;
         let result: Result<T, _> = serde_json::from_str(&response);
 
         let Ok(body) = result else {
@@ -155,6 +160,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         endpoint: &RestApiEndpoint,
         request: Option<&R>,
         query_string: Option<String>,
+        extra_headers: Vec<(&str, &str)>,
     ) -> Result<String, Error> {
         let mut request_json = None;
 
@@ -168,7 +174,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         } else {
             None
         };
-        let (flurl, url) = self.build_flurl::<()>(endpoint, query_string).await?;
+        let (flurl, url) = self.build_flurl::<()>(endpoint, query_string, extra_headers).await?;
         let http_method = endpoint.get_http_method();
 
         let result = if http_method == Method::GET {
@@ -202,22 +208,27 @@ impl<C: RestApiConfig> RestApiClient<C> {
         &self,
         endpoint: &RestApiEndpoint,
         query_string: Option<String>,
+        extra_headers: Vec<(&str, &str)>,
     ) -> Result<(FlUrl, String), Error> {
         let base_url = self.config.get_api_url().await;
 
         let url = self.build_full_url(&base_url, endpoint, query_string);
         let flurl = FlUrl::new(&url).set_timeout(self.config.get_timeout().await);
-        let flurl = self.add_headers(flurl).await;
+        let flurl = self.add_headers(flurl, extra_headers).await;
 
         Ok((flurl, url))
     }
 
-    async fn add_headers(&self, flurl: FlUrl) -> FlUrl {
+    async fn add_headers(&self, flurl: FlUrl, extra_headers: Vec<(&str, &str)>) -> FlUrl {
         let json_content_str = "application/json";
 
-        let flurl = flurl
+        let mut flurl = flurl
             .with_header("Content-Type", json_content_str)
             .with_header("Accept", json_content_str);
+        for (key, value) in extra_headers {
+            flurl = flurl.with_header(key, value);
+        }
+
         flurl
     }
 
