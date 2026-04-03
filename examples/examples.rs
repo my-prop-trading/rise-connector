@@ -1,5 +1,7 @@
-
-use rise_connector::api::{api_client::{RestApiClient, RestApiConfig}, models::CreateInviteRequest};
+use rise_connector::api::{
+    api_client::{RestApiClient, RestApiConfig},
+    models::CreateInviteRequest,
+};
 use std::time::Duration;
 use tokio::time::Instant;
 use uuid::Uuid;
@@ -22,11 +24,10 @@ pub fn create_invite_req() -> CreateInviteRequest {
     let unique_email = format!("test-{}@mailinator.com", Uuid::new_v4());
 
     CreateInviteRequest {
-        email: unique_email,
-        first_name: "John".to_string(),
-        last_name: "Doe".to_string(),
-        company_riseid: None,
-        light: true,
+        company_riseid: "test-riseid".to_string(),
+        invite_list: vec![unique_email],
+        anonymous: false,
+        role: "contractor".to_string(),
     }
 }
 
@@ -37,9 +38,7 @@ pub async fn authorize(rest_client: &RestApiClient<ExampleApiConfig>) {
 }
 
 pub async fn create_invitation(rest_client: &RestApiClient<ExampleApiConfig>) {
-    let resp = rest_client
-        .create_invitation(create_invite_req())
-        .await;
+    let resp = rest_client.create_invitation(create_invite_req()).await;
 
     println!("Create invitation response: {:?}", resp);
 }
