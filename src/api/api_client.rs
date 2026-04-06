@@ -5,7 +5,7 @@ use flurl::{FlUrl, FlUrlResponse};
 use http::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Serialize};
-use tokio::sync::RwLock;
+use std::sync::RwLock;
 use std::fmt::Debug;
 use std::time::Duration;
 use my_logger::LogEventCtx;
@@ -57,9 +57,9 @@ impl<C: RestApiConfig> RestApiClient<C> {
         return self.send_invitation(invite_request, token).await;
     }
 
-    async fn get_auth_token(&self) -> Result<SiweLoginResponse, Error> {
+    async fn create_auth_token(&self) -> Result<SiweLoginResponse, Error> {
         let raw_key = self.config.get_wallet_private_key().await;
-        my_logger::LOGGER.write_debug("get_auth_token", format!("raw_key: {}", raw_key), LogEventCtx::new());
+        my_logger::LOGGER.write_debug("create_auth_token", format!("raw_key: {}", raw_key), LogEventCtx::new());
         let wallet: PrivateKeySigner = raw_key.parse::<PrivateKeySigner>()
             .map_err(|e| Error::RestError(format!("Failed to initialize signer: {}", e)))?;
         let wallet_address = format!("{}", wallet.address());
@@ -105,14 +105,16 @@ impl<C: RestApiConfig> RestApiClient<C> {
     }
 
     async fn get_token(&self) -> Result<String, Error> {
-        let read_guard = self.token_cache.read().await;
+        let read_guard = self.token_cache.read()
+            .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
         if let Some(token) = &*read_guard {
             return Ok(token.clone());
         }
 
-        let login_response = self.get_auth_token().await?;
+        let login_response = self.create_auth_token().await?;
         
-        let mut write_guard = self.token_cache.write().await;
+        let mut write_guard = self.token_cache.write()
+            .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
         *write_guard = Some(login_response.token.clone());
         
         Ok(login_response.token)
