@@ -8,6 +8,7 @@ authors = ["gorin <mxmgorin@gmail.com>"]
 [dependencies]
 flurl = { git = "https://github.com/MyJetTools/fl-url.git", rev = "d835b8c287302952550b604aeb1f122ac6e3a63b" }
 dotenvy = "0.15"
+my-logger = { tag = "1.2.1", git = "https://github.com/MyJetTools/my-logger.git" }
 
 http = "*"
 alloy = { version = "0.1", features = ["signers", "signer-local", "network"] }
