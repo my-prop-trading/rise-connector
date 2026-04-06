@@ -105,18 +105,18 @@ impl<C: RestApiConfig> RestApiClient<C> {
     }
 
     async fn get_token(&self) -> Result<String, Error> {
-        let read_guard = self.token_cache.read()
-            .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
-        if let Some(token) = &*read_guard {
-            return Ok(token.clone());
+        if let Some(token) = self.check_cache().map_err(Error::from)? {
+            return Ok(token);
         }
 
         let login_response = self.create_auth_token().await?;
-        
-        let mut write_guard = self.token_cache.write()
-            .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
-        *write_guard = Some(login_response.token.clone());
-        
+
+        {
+            let mut write_guard = self.token_cache.write()
+                .map_err(|e| format!("Write lock poisoned: {}", e))?;
+            *write_guard = Some(login_response.token.clone());
+        }
+    
         Ok(login_response.token)
     }
 
@@ -282,6 +282,13 @@ impl<C: RestApiConfig> RestApiClient<C> {
 
     pub fn build_query_string(&self, params: Vec<(&str, &str)>) -> String {
         serde_urlencoded::to_string(params).unwrap_or_default()
+    }
+
+    fn check_cache(&self) -> Result<Option<String>, String> {
+        let guard = self.token_cache.read()
+            .map_err(|e| format!("Lock poisoned: {}", e))?;
+
+        Ok(guard.clone()) 
     }
 }
 
