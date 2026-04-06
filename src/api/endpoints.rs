@@ -12,9 +12,9 @@ impl From<&RestApiEndpoint> for String {
         let api_version = "v1";
 
         match item {
-            RestApiEndpoint::GetSiweMessage | RestApiEndpoint::ExecuteSiweAuth => format!("/auth/api/siwe"),
+            RestApiEndpoint::GetSiweMessage | RestApiEndpoint::ExecuteSiweAuth => format!("{api_version}/auth/api/siwe"),
             RestApiEndpoint::Invite => {
-                format!("/{api_version}/invites")
+                format!("{api_version}/invites")
             }
         }
     }

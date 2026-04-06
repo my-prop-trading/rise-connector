@@ -281,16 +281,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
     }
 
     pub fn build_query_string(&self, params: Vec<(&str, &str)>) -> String {
-        let mut query_string = String::new();
-
-        for (key, value) in params {
-            let param = format!("{key}={value}&");
-            query_string.push_str(&param);
-        }
-
-        query_string.pop(); // remove last & symbol
-
-        query_string
+        serde_urlencoded::to_string(params).unwrap_or_default()
     }
 }
 
