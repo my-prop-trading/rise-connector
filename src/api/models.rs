@@ -55,7 +55,8 @@ pub enum Role {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateInviteResponse {
-    pub id: String,
-    pub status: String,
-    pub email: String,
+    pub invited: Vec<String>,
+    pub failed: Vec<String>,
+    #[serde(rename = "countAdded")]
+    pub count_added: i32,
 }
