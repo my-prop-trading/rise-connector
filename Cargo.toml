@@ -1,15 +1,20 @@
 [package]
 name = "rise-connector"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 authors = ["gorin <mxmgorin@gmail.com>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 flurl = { git = "https://github.com/MyJetTools/fl-url.git", rev = "d835b8c287302952550b604aeb1f122ac6e3a63b" }
+dotenvy = "0.15"
+my-logger = { tag = "1.2.1", git = "https://github.com/MyJetTools/my-logger.git" }
 
 http = "*"
+alloy = { version = "0.1", features = ["signers", "signer-local", "network"] }
+thiserror = "1.0"
 serde = { version = "*", features = ["derive"] }
+serde_urlencoded = "0.7"
 serde_json = "*"
 tokio = { version = "*", features = ["full"] }
 async-trait = "*"

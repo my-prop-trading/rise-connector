@@ -7,6 +7,7 @@ Cargo.lock
 *.user
 **/*.min.css
 **/*.js.css
+.env
 
 **/bin
 **/obj
