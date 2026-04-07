@@ -46,7 +46,6 @@ impl<C: RestApiConfig> RestApiClient<C> {
             return Err(format!("Failed to get token: {:?}", token.unwrap_err()).into());
         };
 
-        println!("wallet_address: {}", token);
         let invite_request = CreateInviteRequest {
             invite_list,
             anonymous: false,
@@ -64,7 +63,6 @@ impl<C: RestApiConfig> RestApiClient<C> {
             .map_err(|e| Error::RestError(format!("Failed to initialize signer: {}", e)))?;
         let wallet_address = format!("{}", wallet.address());
 
-        println!("wallet_address: {}", wallet_address);
         let body: Option<&()> = None;
         let message_data: ApiResponse<SiweMessageResponse> = self
             .send_deserialized(
@@ -84,7 +82,6 @@ impl<C: RestApiConfig> RestApiClient<C> {
             return Err("Wallet mismatch from API".into());
         }
 
-        println!("message_data.data: {:?}", message_data.data);
         let signature = wallet
             .sign_message(&message_data.data.message.as_bytes())
             .await
@@ -99,8 +96,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         let login_data: ApiResponse<SiweLoginResponse> = self
             .send_deserialized(RestApiEndpoint::ExecuteSiweAuth, Some(&login_req), None, vec![])
             .await?;
-    
-            println!("login_data.data: {:?}", login_data);
+
         Ok(login_data.data)
     }
 
