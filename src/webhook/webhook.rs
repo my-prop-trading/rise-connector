@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct WebhookPayload {
     #[serde(flatten)]
     pub header: WebhookHeader,
+    #[serde(flatten)]
     pub entity: WebhookEntity,
     pub meta: Option<WebhookMeta>,
 }
