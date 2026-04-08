@@ -17,6 +17,5 @@ pub struct InviteDetails {
     pub uuid: String,
     #[serde(rename = "riseId")]
     pub rise_id: Option<String>,
-    pub converted: i32,
     pub company: i64,
 }
