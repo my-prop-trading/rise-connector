@@ -64,14 +64,14 @@ impl<C: RestApiConfig> RestApiClient<C> {
             Err(e) => {
                 let err_msg = e.to_string();
                 if err_msg.contains("401") || err_msg.contains("403") || 
-                   err_msg.contains("Unauthorized") || err_msg.contains("Forbidden") 
-                {
-                    let mut write_guard = self
-                        .token_cache
-                        .write()
-                        .map_err(|e| format!("Write lock poisoned: {}", e))?;
-                    *write_guard = None;
-        
+                   err_msg.contains("Unauthorized") || err_msg.contains("Forbidden") {
+                    {
+                        let mut write_guard = self.token_cache.write()
+                            .map_err(|e| format!("Write lock poisoned: {}", e))?;
+                        
+                        *write_guard = None; 
+                    } 
+
                     let token = self.get_token().await?;
 
                     self.send_invitation(&invite_request, token).await
