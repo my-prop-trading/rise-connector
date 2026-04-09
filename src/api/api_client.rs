@@ -1,18 +1,21 @@
-use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer;
+use alloy::signers::local::PrivateKeySigner;
 use error_chain::bail;
 use flurl::{FlUrl, FlUrlResponse};
 use http::{Method, StatusCode};
-use serde::de::DeserializeOwned;
-use serde::{Serialize};
-use std::sync::RwLock;
-use std::fmt::Debug;
-use std::time::Duration;
 use my_logger::LogEventCtx;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use std::fmt::Debug;
+use std::sync::RwLock;
+use std::time::Duration;
 
 use crate::api::endpoints::RestApiEndpoint;
 use crate::api::errors::Error;
-use crate::api::models::{ApiResponse, CreateInviteRequest, CreateInviteResponse, SiweLoginRequest, SiweLoginResponse, SiweMessageResponse};
+use crate::api::models::{
+    ApiResponse, CreateInviteRequest, CreateInviteResponse, SiweLoginRequest, SiweLoginResponse,
+    SiweMessageResponse,
+};
 
 #[async_trait::async_trait]
 pub trait RestApiConfig {
@@ -21,6 +24,7 @@ pub trait RestApiConfig {
     async fn get_wallet_private_key(&self) -> String;
     async fn get_company_rise_id(&self) -> String;
     async fn get_company_email(&self) -> String;
+    async fn token_cache_enabled(&self) -> bool;
 }
 
 pub struct RestApiClient<C: RestApiConfig> {
@@ -37,11 +41,11 @@ impl<C: RestApiConfig> RestApiClient<C> {
     }
 
     pub async fn create_invitation(
-        &self, 
+        &self,
         invite_list: Vec<String>,
     ) -> Result<ApiResponse<CreateInviteResponse>, Error> {
         let token = self.get_token().await;
-        
+
         let Ok(token) = token else {
             return Err(format!("Failed to get token: {:?}", token.unwrap_err()).into());
         };
@@ -58,8 +62,13 @@ impl<C: RestApiConfig> RestApiClient<C> {
 
     async fn create_auth_token(&self) -> Result<SiweLoginResponse, Error> {
         let raw_key = self.config.get_wallet_private_key().await;
-        my_logger::LOGGER.write_debug("create_auth_token", format!("raw_key: {}", raw_key), LogEventCtx::new());
-        let wallet: PrivateKeySigner = raw_key.parse::<PrivateKeySigner>()
+        my_logger::LOGGER.write_debug(
+            "create_auth_token",
+            format!("raw_key: {}", raw_key),
+            LogEventCtx::new(),
+        );
+        let wallet: PrivateKeySigner = raw_key
+            .parse::<PrivateKeySigner>()
             .map_err(|e| Error::RestError(format!("Failed to initialize signer: {}", e)))?;
         let wallet_address = format!("{}", wallet.address());
 
@@ -68,16 +77,18 @@ impl<C: RestApiConfig> RestApiClient<C> {
             .send_deserialized(
                 RestApiEndpoint::GetSiweMessage,
                 body,
-                Some(self.build_query_string(
-                    vec![
-                        ("wallet", wallet_address.as_str()),
-                        ("impersonate", self.config.get_company_email().await.as_str()),
-                        ("rise_id", self.config.get_company_rise_id().await.as_str())
-                        ],
-                )),
+                Some(self.build_query_string(vec![
+                    ("wallet", wallet_address.as_str()),
+                    (
+                        "impersonate",
+                        self.config.get_company_email().await.as_str(),
+                    ),
+                    ("rise_id", self.config.get_company_rise_id().await.as_str()),
+                ])),
                 vec![],
-            ).await?;
-    
+            )
+            .await?;
+
         if message_data.data.wallet.to_lowercase() != wallet_address.to_lowercase() {
             return Err("Wallet mismatch from API".into());
         }
@@ -94,39 +105,51 @@ impl<C: RestApiConfig> RestApiClient<C> {
         };
 
         let login_data: ApiResponse<SiweLoginResponse> = self
-            .send_deserialized(RestApiEndpoint::ExecuteSiweAuth, Some(&login_req), None, vec![])
+            .send_deserialized(
+                RestApiEndpoint::ExecuteSiweAuth,
+                Some(&login_req),
+                None,
+                vec![],
+            )
             .await?;
 
         Ok(login_data.data)
     }
 
     async fn get_token(&self) -> Result<String, Error> {
-        if let Some(token) = self.check_cache().map_err(Error::from)? {
-            return Ok(token);
+        let cache_enabled = self.config.token_cache_enabled().await;
+
+        if cache_enabled {
+            if let Some(token) = self.read_token_cache().map_err(Error::from)? {
+                return Ok(token);
+            }
         }
 
         let login_response = self.create_auth_token().await?;
 
-        {
-            let mut write_guard = self.token_cache.write()
+        if cache_enabled {
+            let mut write_guard = self
+                .token_cache
+                .write()
                 .map_err(|e| format!("Write lock poisoned: {}", e))?;
             *write_guard = Some(login_response.token.clone());
         }
-    
+
         Ok(login_response.token)
     }
 
     async fn send_invitation(
-        &self, 
+        &self,
         invite: CreateInviteRequest,
-        token: String
+        token: String,
     ) -> Result<ApiResponse<CreateInviteResponse>, Error> {
         self.send_deserialized(
-            RestApiEndpoint::Invite, 
+            RestApiEndpoint::Invite,
             Some(&invite),
             None,
             vec![("Authorization", format!("Bearer {token}").as_str())],
-        ).await
+        )
+        .await
     }
 
     async fn send_deserialized<R: Serialize + Debug, T: DeserializeOwned + Debug>(
@@ -181,7 +204,9 @@ impl<C: RestApiConfig> RestApiClient<C> {
         query_string: Option<String>,
         extra_headers: Vec<(&str, &str)>,
     ) -> Result<T, Error> {
-        let response = self.send_flurl(endpoint, request, query_string, extra_headers).await?;
+        let response = self
+            .send_flurl(endpoint, request, query_string, extra_headers)
+            .await?;
         let result: Result<T, _> = serde_json::from_str(&response);
 
         let Ok(body) = result else {
@@ -218,7 +243,9 @@ impl<C: RestApiConfig> RestApiClient<C> {
         } else {
             None
         };
-        let (flurl, url) = self.build_flurl::<()>(endpoint, query_string, extra_headers).await?;
+        let (flurl, url) = self
+            .build_flurl::<()>(endpoint, query_string, extra_headers)
+            .await?;
         let http_method = endpoint.get_http_method();
 
         let result = if http_method == Method::GET {
@@ -280,11 +307,13 @@ impl<C: RestApiConfig> RestApiClient<C> {
         serde_urlencoded::to_string(params).unwrap_or_default()
     }
 
-    fn check_cache(&self) -> Result<Option<String>, String> {
-        let guard = self.token_cache.read()
+    fn read_token_cache(&self) -> Result<Option<String>, String> {
+        let guard = self
+            .token_cache
+            .read()
             .map_err(|e| format!("Lock poisoned: {}", e))?;
 
-        Ok(guard.clone()) 
+        Ok(guard.clone())
     }
 }
 
@@ -307,17 +336,20 @@ async fn handle_flurl_text(
         StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(body_str),
         StatusCode::INTERNAL_SERVER_ERROR => {
             bail!(format!(
-                "Internal Server Error. Url: {request_method:?} {request_url}. Request: {:?}. Response: {}", request_json, body_str,
+                "Internal Server Error. Url: {request_method:?} {request_url}. Request: {:?}. Response: {}",
+                request_json, body_str,
             ));
         }
         StatusCode::SERVICE_UNAVAILABLE => {
             bail!(format!(
-                "Service Unavailable. Url: {request_method:?} {request_url}. Request: {:?}. Response: {}", request_json, body_str
+                "Service Unavailable. Url: {request_method:?} {request_url}. Request: {:?}. Response: {}",
+                request_json, body_str
             ));
         }
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
             bail!(format!(
-                "Unauthorized or forbidden. Url: {request_method:?} {request_url}. Request: {:?}. Response: {}", request_json, body_str
+                "Unauthorized or forbidden. Url: {request_method:?} {request_url}. Request: {:?}. Response: {}",
+                request_json, body_str
             ));
         }
         StatusCode::BAD_REQUEST => {
@@ -328,7 +360,9 @@ async fn handle_flurl_text(
         }
         code => {
             let error = body_str;
-            bail!(format!("Received response code: {code:?}. Url: {request_method:?} {request_url}. Request: {request_json:?} Response: {error:?}"));
+            bail!(format!(
+                "Received response code: {code:?}. Url: {request_method:?} {request_url}. Request: {request_json:?} Response: {error:?}"
+            ));
         }
     }
 }

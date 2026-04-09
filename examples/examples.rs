@@ -1,6 +1,4 @@
-use rise_connector::api::{
-    api_client::{RestApiClient, RestApiConfig},
-};
+use rise_connector::api::api_client::{RestApiClient, RestApiConfig};
 use std::time::Duration;
 use tokio::time::Instant;
 use uuid::Uuid;
@@ -19,7 +17,13 @@ async fn main() {
 
 pub async fn create_invitation(rest_client: &RestApiClient<ExampleApiConfig>) {
     let resp = rest_client
-        .create_invitation(["some_rise_id".to_string(), format!("test-{}@mailinator.com", Uuid::new_v4())].to_vec())
+        .create_invitation(
+            [
+                "some_rise_id".to_string(),
+                format!("test-{}@mailinator.com", Uuid::new_v4()),
+            ]
+            .to_vec(),
+        )
         .await;
 
     println!("Create invitation response: {:?}", resp);
@@ -50,5 +54,9 @@ impl RestApiConfig for ExampleApiConfig {
     async fn get_company_email(&self) -> String {
         std::env::var("COMPANY_EMAIL")
             .expect("COMPANY_EMAIL must be set in your environment or .env file")
+    }
+
+    async fn token_cache_enabled(&self) -> bool {
+        false
     }
 }
