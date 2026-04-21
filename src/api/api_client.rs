@@ -57,7 +57,29 @@ impl<C: RestApiConfig> RestApiClient<C> {
             role: crate::api::models::Role::Contractor,
         };
 
-        return self.send_invitation(invite_request, token).await;
+        let res = self.send_invitation(&invite_request, token).await;
+
+        match res {
+            Ok(response) => Ok(response),
+            Err(e) => {
+                let err_msg = e.to_string();
+                if err_msg.contains("401") || err_msg.contains("403") || 
+                   err_msg.contains("Unauthorized") || err_msg.contains("Forbidden") {
+                    {
+                        let mut write_guard = self.token_cache.write()
+                            .map_err(|e| format!("Write lock poisoned: {}", e))?;
+                        
+                        *write_guard = None; 
+                    } 
+
+                    let token = self.get_token().await?;
+
+                    self.send_invitation(&invite_request, token).await
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 
     async fn create_auth_token(&self) -> Result<SiweLoginResponse, Error> {
@@ -140,12 +162,12 @@ impl<C: RestApiConfig> RestApiClient<C> {
 
     async fn send_invitation(
         &self,
-        invite: CreateInviteRequest,
+        invite: &CreateInviteRequest,
         token: String,
     ) -> Result<ApiResponse<CreateInviteResponse>, Error> {
         self.send_deserialized(
             RestApiEndpoint::Invite,
-            Some(&invite),
+            Some(invite),
             None,
             vec![("Authorization", format!("Bearer {token}").as_str())],
         )
@@ -311,7 +333,7 @@ impl<C: RestApiConfig> RestApiClient<C> {
         let guard = self
             .token_cache
             .read()
-            .map_err(|e| format!("Lock poisoned: {}", e))?;
+            .expect("short critical section, can't poison lock");
 
         Ok(guard.clone())
     }
