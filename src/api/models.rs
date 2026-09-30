@@ -66,3 +66,21 @@ pub struct FailedInvite {
     pub invite: String,
     pub error: String,
 }
+/// Talent (contractor) record from `GET v1/teams/{teamId}/talent`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Talent {
+    pub email: String,
+    pub nanoid: Option<String>,
+    #[serde(rename = "riseId")]
+    pub rise_id: Option<String>,
+    pub role: Option<String>,
+}
+
+impl Talent {
+    /// `riseId` only when it is an on-chain address; Rise may return a nanoid there instead.
+    pub fn rise_id_address(&self) -> Option<&str> {
+        self.rise_id
+            .as_deref()
+            .filter(|id| crate::utils::is_eth_address(id))
+    }
+}

@@ -1,10 +1,12 @@
 use http::Method;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum RestApiEndpoint {
     GetSiweMessage,
     ExecuteSiweAuth,
     Invite,
+    /// `team_id` accepts a team/company RiseID, RiseAccount address or nanoid.
+    TeamTalent { team_id: String },
 }
 
 impl From<&RestApiEndpoint> for String {
@@ -16,6 +18,9 @@ impl From<&RestApiEndpoint> for String {
             RestApiEndpoint::Invite => {
                 format!("{api_version}/invites")
             }
+            RestApiEndpoint::TeamTalent { team_id } => {
+                format!("{api_version}/teams/{team_id}/talent")
+            }
         }
     }
 }
@@ -26,6 +31,7 @@ impl RestApiEndpoint {
             RestApiEndpoint::ExecuteSiweAuth => Method::POST,
             RestApiEndpoint::Invite => Method::POST,
             RestApiEndpoint::GetSiweMessage => Method::GET,
+            RestApiEndpoint::TeamTalent { .. } => Method::GET,
         }
     }
 }

@@ -14,7 +14,7 @@ use crate::api::endpoints::RestApiEndpoint;
 use crate::api::errors::Error;
 use crate::api::models::{
     ApiResponse, CreateInviteRequest, CreateInviteResponse, SiweLoginRequest, SiweLoginResponse,
-    SiweMessageResponse,
+    SiweMessageResponse, Talent,
 };
 
 #[async_trait::async_trait]
@@ -44,12 +44,6 @@ impl<C: RestApiConfig> RestApiClient<C> {
         &self,
         invite_list: Vec<String>,
     ) -> Result<ApiResponse<CreateInviteResponse>, Error> {
-        let token = self.get_token().await;
-
-        let Ok(token) = token else {
-            return Err(format!("Failed to get token: {:?}", token.unwrap_err()).into());
-        };
-
         let invite_request = CreateInviteRequest {
             invite_list,
             anonymous: false,
@@ -57,24 +51,58 @@ impl<C: RestApiConfig> RestApiClient<C> {
             role: crate::api::models::Role::Contractor,
         };
 
-        let res = self.send_invitation(&invite_request, token).await;
+        self.send_authorized(RestApiEndpoint::Invite, Some(&invite_request), None)
+            .await
+    }
+
+    /// Contractors of the configured company matching `email`; empty when Rise knows no such talent.
+    pub async fn get_talent_by_email(&self, email: &str) -> Result<Vec<Talent>, Error> {
+        let endpoint = RestApiEndpoint::TeamTalent {
+            team_id: self.config.get_company_rise_id().await,
+        };
+        let query = self.build_query_string(vec![("email", email)]);
+        let body: Option<&()> = None;
+
+        let response: ApiResponse<Vec<Talent>> = self
+            .send_authorized(endpoint, body, Some(query))
+            .await?;
+
+        Ok(response.data)
+    }
+
+    /// Sends with a bearer token, re-authenticating once when Rise rejects the cached one.
+    async fn send_authorized<R: Serialize + Debug, T: DeserializeOwned + Debug>(
+        &self,
+        endpoint: RestApiEndpoint,
+        request: Option<&R>,
+        query_string: Option<String>,
+    ) -> Result<T, Error> {
+        let token = self.get_token().await;
+
+        let Ok(token) = token else {
+            return Err(format!("Failed to get token: {:?}", token.unwrap_err()).into());
+        };
+
+        let res = self
+            .send_with_token(endpoint.clone(), request, query_string.clone(), token)
+            .await;
 
         match res {
             Ok(response) => Ok(response),
             Err(e) => {
                 let err_msg = e.to_string();
-                if err_msg.contains("401") || err_msg.contains("403") || 
+                if err_msg.contains("401") || err_msg.contains("403") ||
                    err_msg.contains("Unauthorized") || err_msg.contains("Forbidden") {
                     {
                         let mut write_guard = self.token_cache.write()
                             .map_err(|e| format!("Write lock poisoned: {}", e))?;
-                        
-                        *write_guard = None; 
-                    } 
+
+                        *write_guard = None;
+                    }
 
                     let token = self.get_token().await?;
 
-                    self.send_invitation(&invite_request, token).await
+                    self.send_with_token(endpoint, request, query_string, token).await
                 } else {
                     Err(e)
                 }
@@ -160,15 +188,17 @@ impl<C: RestApiConfig> RestApiClient<C> {
         Ok(login_response.token)
     }
 
-    async fn send_invitation(
+    async fn send_with_token<R: Serialize + Debug, T: DeserializeOwned + Debug>(
         &self,
-        invite: &CreateInviteRequest,
+        endpoint: RestApiEndpoint,
+        request: Option<&R>,
+        query_string: Option<String>,
         token: String,
-    ) -> Result<ApiResponse<CreateInviteResponse>, Error> {
+    ) -> Result<T, Error> {
         self.send_deserialized(
-            RestApiEndpoint::Invite,
-            Some(invite),
-            None,
+            endpoint,
+            request,
+            query_string,
             vec![("Authorization", format!("Bearer {token}").as_str())],
         )
         .await
