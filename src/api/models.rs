@@ -56,7 +56,13 @@ pub enum Role {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateInviteResponse {
     pub invited: Vec<String>,
-    pub failed: Vec<String>,
+    pub failed: Vec<FailedInvite>,
     #[serde(rename = "countAdded")]
     pub count_added: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FailedInvite {
+    pub invite: String,
+    pub error: String,
 }
