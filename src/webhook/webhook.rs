@@ -1,15 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+/// Rise webhook v1 body: the event fields sit at the top level, no envelope.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebhookPayload {
-    #[serde(flatten)]
-    pub header: WebhookHeader,
-    pub entity: WebhookEntity,
-    pub meta: Option<WebhookMeta>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct WebhookEntity {
     pub company_id: i64,
     #[serde(rename = "type")]
     pub event_type: String,
@@ -25,19 +18,4 @@ pub struct InviteDetails {
     pub uuid: String,
     #[serde(rename = "riseId")]
     pub rise_id: Option<String>,
-    pub converted: i32,
-    pub company: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct WebhookHeader {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub event_type: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct WebhookMeta {
-    pub source: String,
-    pub version: String,
 }
