@@ -3,7 +3,6 @@ use alloy::signers::local::PrivateKeySigner;
 use error_chain::bail;
 use flurl::{FlUrl, FlUrlResponse};
 use http::{Method, StatusCode};
-use my_logger::LogEventCtx;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::fmt::Debug;
@@ -112,11 +111,6 @@ impl<C: RestApiConfig> RestApiClient<C> {
 
     async fn create_auth_token(&self) -> Result<SiweLoginResponse, Error> {
         let raw_key = self.config.get_wallet_private_key().await;
-        my_logger::LOGGER.write_debug(
-            "create_auth_token",
-            format!("raw_key: {}", raw_key),
-            LogEventCtx::new(),
-        );
         let wallet: PrivateKeySigner = raw_key
             .parse::<PrivateKeySigner>()
             .map_err(|e| Error::RestError(format!("Failed to initialize signer: {}", e)))?;
